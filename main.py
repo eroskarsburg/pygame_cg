@@ -48,7 +48,7 @@ def generate_breakable_walls(rows=15,cols=15):
                 else:
                     row_data.append(" ")  # Espaço vazio
         level.append("".join(row_data))
-    
+
     # Limpa áreas iniciais para os jogadores
     level[1] = level[1][:1] + "     " + level[1][6:]
     level[2] = level[2][:1] + "     " + level[2][6:]
@@ -124,11 +124,21 @@ heart_file = io.BytesIO(response.content)
 heart_img = pygame.image.load(heart_file).convert_alpha()
 heart_img = pygame.transform.scale(heart_img, (30, 30))
 
+bombpowerupurl = "https://images.freeimages.com/cme/images/previews/c30/psd-black-burning-bomb-icon-45908.jpg?h=350"
+response = requests.get(bombpowerupurl)
+powerupffile = io.BytesIO(response.content)
+powerup_img = pygame.image.load(powerupffile).convert_alpha()
+powerup_img = pygame.transform.scale(powerup_img, (30, 30))
+
+powerups = []  # Lista de power-ups no mapa
+POWERUP_SIZE = TILE_SIZE
 player_speed = TILE_SIZE
 bombs = []
 explosions = []
 vidas = 3
 vidas2 = 3
+max_bombas_p1 = 1
+max_bombas_p2 = 1
 
 # Funções
 def draw_level():
@@ -235,7 +245,8 @@ while True:
         if event.type == pygame.KEYDOWN:
             # Jogador 1 coloca bomba com ESPAÇO
             if event.key == pygame.K_e:
-                if len(bombs) < 10:
+                bombas_ativas_p1 = sum(1 for bomb in bombs if bomb["owner"] == "p1")
+                if bombas_ativas_p1 < max_bombas_p1:
                     bx = player.x // TILE_SIZE * TILE_SIZE
                     by = (player.y - HUD_HEIGHT) // TILE_SIZE * TILE_SIZE + HUD_HEIGHT
                     bomb_pos = (bx, by)
@@ -247,9 +258,10 @@ while True:
                             "owner": "p1"
                         })
 
-            # Jogador 2 coloca bomba com tecla E
+            # Jogador 2 coloca bomba com tecla ESPAÇO
             if event.key == pygame.K_SPACE:
-                if len(bombs) < 10:
+                bombas_ativas_p2 = sum(1 for bomb in bombs if bomb["owner"] == "p2")
+                if bombas_ativas_p2 < max_bombas_p2:
                     bx = player2.x // TILE_SIZE * TILE_SIZE
                     by = (player2.y - HUD_HEIGHT) // TILE_SIZE * TILE_SIZE + HUD_HEIGHT
                     bomb_pos = (bx, by)
@@ -307,22 +319,28 @@ while True:
                 for i in range(1, 2):
                     nx = bx + dx * TILE_SIZE * i
                     ny = by + dy * TILE_SIZE * i
-                    
+
                     # Verifica se há uma parede quebrável nesta posição
                     if is_breakable_wall((nx + TILE_SIZE // 2, ny + TILE_SIZE // 2)):
                         # Quebra a parede e adiciona explosão nela
                         break_wall((nx + TILE_SIZE // 2, ny + TILE_SIZE // 2))
+                        if random.random() < 0.5:
+                            powerups.append({
+                                "rect": pygame.Rect(nx, ny, POWERUP_SIZE, POWERUP_SIZE),
+                                "type": "bomb_plus"
+                            })
+
                         explosions.append({
                             "rect": pygame.Rect(nx, ny, TILE_SIZE, TILE_SIZE),
                             "time": time.time(),
                             "damaged": False
                         })
                         break  # Para a propagação da explosão nesta direção
-                    
+
                     # Se é uma parede fixa, para a explosão
                     if is_wall((nx + TILE_SIZE // 2, ny + TILE_SIZE // 2)):
                         break
-                    
+
                     # Adiciona explosão em espaço vazio
                     explosions.append({
                         "rect": pygame.Rect(nx, ny, TILE_SIZE, TILE_SIZE),
@@ -342,6 +360,19 @@ while True:
         offset_x = (TILE_SIZE - scaled_size) // 2
         offset_y = (TILE_SIZE - scaled_size) // 2
         screen.blit(scaled_bomb, (bx + offset_x, by + offset_y))
+
+    for powerup in powerups[:]:
+        if player.colliderect(powerup["rect"]):
+            if powerup["type"] == "bomb_plus":
+                max_bombas_p1 += 1
+            powerups.remove(powerup)
+        elif player2.colliderect(powerup["rect"]):
+            if powerup["type"] == "bomb_plus":
+                max_bombas_p2 += 1
+            powerups.remove(powerup)
+
+    for powerup in powerups:
+        screen.blit(powerup_img, powerup["rect"].topleft)
 
     for explosion in explosions[:]:
         if time.time() - explosion["time"] > 0.3:
@@ -381,6 +412,18 @@ while True:
             bombs.clear()
             explosions.clear()
             continue
+
+
+    # Bombas disponíveis
+    fonte = pygame.font.SysFont(None, 24)
+    bombas_ativas_p1 = sum(1 for bomb in bombs if bomb["owner"] == "p1")
+    bombas_ativas_p2 = sum(1 for bomb in bombs if bomb["owner"] == "p2")
+
+    texto_bombas1 = fonte.render(f"Bombas: {max_bombas_p1 - bombas_ativas_p1}", True, (0, 0, 0))
+    texto_bombas2 = fonte.render(f"Bombas: {max_bombas_p2 - bombas_ativas_p2}", True, (0, 0, 0))
+
+    screen.blit(texto_bombas1, (10, 45))
+    screen.blit(texto_bombas2, (WIDTH - texto_bombas2.get_width() - 10, 45))
 
     screen.blit(player_img, player.topleft)
     screen.blit(player2_img, player2.topleft)
